@@ -40,9 +40,9 @@ STROKE_WIDTH = 4
 # Угол поворота текста водяного знака (в градусах)
 WATERMARK_ROTATION = -30
 
-# Базовое расстояние между водяными знаками (будет масштабироваться)
-BASE_SPACING_X = 280
-BASE_SPACING_Y = 200
+# Коэффициент отступа между водяными знаками (множитель от размера шрифта)
+# Чем больше значение, тем больше "воздуха" между текстами
+MARGIN_MULTIPLIER = 1.5
 
 
 def get_font_size(width: int, height: int) -> int:
@@ -61,17 +61,6 @@ def get_font_size(width: int, height: int) -> int:
         min_dimension = min(width, height)
         relative_size = min_dimension // RELATIVE_FONT_DIVISOR
         return max(relative_size, MIN_FONT_SIZE)
-
-
-def get_spacing(font_size: int) -> tuple:
-    """
-    Вычисляет расстояние между водяными знаками на основе размера шрифта.
-    Масштабируем базовое расстояние пропорционально размеру шрифта.
-    """
-    scale = font_size / FIXED_FONT_SIZE
-    spacing_x = int(BASE_SPACING_X * scale)
-    spacing_y = int(BASE_SPACING_Y * scale)
-    return spacing_x, spacing_y
 
 
 def load_font(font_size: int) -> ImageFont.FreeTypeFont:
@@ -105,6 +94,7 @@ def add_watermark(image_bytes: bytes, watermark_text: str = None) -> BytesIO:
     - Белый текст с чёрной обводкой (виден на любом фоне)
     - Адаптивный размер шрифта для маленьких изображений
     - Фиксированный размер 72px для изображений > 1000x1000
+    - Динамический расчёт расстояния на основе реальных размеров повёрнутого текста
     
     Аргументы:
         image_bytes: Байты исходного изображения
@@ -154,13 +144,9 @@ def add_watermark(image_bytes: bytes, watermark_text: str = None) -> BytesIO:
     # Загружаем шрифт
     font = load_font(font_size)
     
-    # Вычисляем расстояние между водяными знаками
-    spacing_x, spacing_y = get_spacing(font_size)
-    
-    # Создаём прозрачный слой для водяных знаков
-    watermark_layer = Image.new('RGBA', (width, height), (255, 255, 255, 0))
-    
-    # Измеряем размер текста
+    # ============================================================
+    # Шаг 1: Измеряем точные размеры текста
+    # ============================================================
     temp_draw = ImageDraw.Draw(Image.new('RGBA', (1, 1)))
     text_bbox = temp_draw.textbbox(
         (0, 0), watermark_text, font=font, 
@@ -169,21 +155,21 @@ def add_watermark(image_bytes: bytes, watermark_text: str = None) -> BytesIO:
     text_width = text_bbox[2] - text_bbox[0]
     text_height = text_bbox[3] - text_bbox[1]
     
-    # Создаём изображение для одного водяного знака
-    # Увеличиваем размер для поворота и обводки
-    padding = stroke_width * 2 + 10
-    diagonal = int(math.sqrt(text_width**2 + text_height**2)) + padding * 2
-    single_watermark = Image.new('RGBA', (diagonal, diagonal), (255, 255, 255, 0))
+    # ============================================================
+    # Шаг 2: Создаём изображение строго по размеру текста
+    # ============================================================
+    # Добавляем небольшой padding для обводки
+    padding = stroke_width + 2
+    single_watermark = Image.new(
+        'RGBA', 
+        (text_width + padding * 2, text_height + padding * 2), 
+        (255, 255, 255, 0)
+    )
     
-    # Рисуем текст с обводкой по центру
+    # Рисуем текст с обводкой
     draw_single = ImageDraw.Draw(single_watermark)
-    text_x = (diagonal - text_width) // 2
-    text_y = (diagonal - text_height) // 2
-    
-    # Рисуем текст с обводкой (stroke)
-    # Белый текст с чёрной обводкой — виден на любом фоне!
     draw_single.text(
-        (text_x, text_y), 
+        (padding, padding), 
         watermark_text, 
         font=font, 
         fill=WATERMARK_FILL_COLOR,
@@ -191,26 +177,46 @@ def add_watermark(image_bytes: bytes, watermark_text: str = None) -> BytesIO:
         stroke_fill=WATERMARK_STROKE_COLOR
     )
     
-    # Поворачиваем водяной знак
+    # ============================================================
+    # Шаг 3: Поворачиваем с expand=True для получения точного bounding box
+    # ============================================================
     rotated_watermark = single_watermark.rotate(
         WATERMARK_ROTATION, 
-        expand=False, 
+        expand=True,  # Важно! Расширяем холст под повёрнутый текст
         resample=Image.BICUBIC
     )
-    wm_width, wm_height = rotated_watermark.size
     
-    # Размещаем водяные знаки в шахматном порядке
-    start_x = -wm_width
-    start_y = -wm_height
+    # Получаем реальные размеры повёрнутого изображения
+    rotated_width, rotated_height = rotated_watermark.size
+    
+    # ============================================================
+    # Шаг 4: Динамический расчёт spacing на основе размеров
+    # ============================================================
+    # Отступ (margin) зависит от размера шрифта
+    margin = int(font_size * MARGIN_MULTIPLIER)
+    
+    # Шаг сетки = размер повёрнутого текста + отступ
+    spacing_x = rotated_width + margin
+    spacing_y = rotated_height + margin
+    
+    # ============================================================
+    # Шаг 5: Размещаем водяные знаки по сетке
+    # ============================================================
+    # Создаём прозрачный слой для водяных знаков
+    watermark_layer = Image.new('RGBA', (width, height), (255, 255, 255, 0))
+    
+    # Начинаем за пределами изображения для равномерного покрытия
+    start_x = -rotated_width
+    start_y = -rotated_height
     
     y = start_y
     row = 0
-    while y < height + wm_height:
+    while y < height + rotated_height:
         # Смещение для шахматного порядка
         offset = (row % 2) * (spacing_x // 2)
         x = start_x + offset
         
-        while x < width + wm_width:
+        while x < width + rotated_width:
             watermark_layer.paste(rotated_watermark, (int(x), int(y)), rotated_watermark)
             x += spacing_x
         
