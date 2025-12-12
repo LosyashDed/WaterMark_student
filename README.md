@@ -6,14 +6,14 @@
 
 ```
 project/
-├── app/                     # Python приложение
-│   ├── main.py              # FastAPI эндпоинты
+├── app/                     # Основная папка
+│   ├── main.py              # FastAPI 
 │   ├── services.py          # Логика обработки изображений
-│   ├── Dockerfile           # Контейнеризация Python-сервиса
+│   ├── Dockerfile           # Docker Python-сервиса
 │   └── requirements.txt     # Зависимости Python
-├── nginx/                   # Настройки Nginx
-│   └── nginx.conf           # Конфигурация Reverse Proxy
-├── docker-compose.yml       # Оркестрация контейнеров
+├── nginx/                   # Nginx
+│   └── nginx.conf           # Nginx
+├── docker-compose.yml       # Docker
 └── README.md                # Документация
 ```
 
@@ -38,11 +38,6 @@ cd path/to/project
 docker-compose up --build
 ```
 
-Эта команда:
-- Соберёт Docker-образ для Python-приложения
-- Скачает образ Nginx
-- Запустит оба контейнера в связанной сети
-
 ### 3. Проверка работоспособности
 
 ```bash
@@ -60,8 +55,7 @@ curl http://localhost/health
 curl -X POST -F "file=@/path/to/image.jpg" http://localhost/process --output result.jpg
 ```
 
-## API Эндпоинты
-
+## API 
 | Метод | Путь      | Описание                           |
 |-------|-----------|-------------------------------------|
 | GET   | /health   | Проверка работоспособности сервиса |
@@ -71,40 +65,11 @@ curl -X POST -F "file=@/path/to/image.jpg" http://localhost/process --output res
 
 После запуска проекта доступна автоматическая документация:
 
-- **Swagger UI:** http://localhost/docs
-- **ReDoc:** http://localhost/redoc
-
-## Остановка проекта
-
-```bash
-# Остановить контейнеры
-docker-compose down
-
-# Остановить и удалить volumes
-docker-compose down -v
-```
-
-## Архитектура решения
-
-```
-┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-│   Клиент    │─────▶│    Nginx    │─────▶│   FastAPI   │
-│  (Browser)  │◀─────│   :80       │◀─────│   :8000     │
-└─────────────┘      └─────────────┘      └─────────────┘
-                        Reverse            Python App
-                        Proxy              + Pillow
-```
-
-- **Nginx** — принимает входящие запросы на порту 80, проксирует их на FastAPI
-- **FastAPI** — обрабатывает запросы, добавляет водяной знак на изображения
-- **Docker Compose** — управляет жизненным циклом контейнеров
+- http://localhost/docs
+- http://localhost/redoc
 
 ## Ограничения
 
 - Максимальный размер загружаемого файла: **10 МБ** (настраивается в `nginx.conf`)
 - Поддерживаемые форматы: JPEG, PNG, GIF, BMP
 - Выходной формат: JPEG
-
-## Автор
-
-Студент курса «Настройка и администрирование сервисного ПО»
