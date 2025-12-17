@@ -2,6 +2,7 @@ import requests
 import os
 from pathlib import Path
 import time
+import sys
 
 
 API_URL = "http://localhost"
@@ -77,7 +78,7 @@ def run_tests():
     print("\n📡 Проверка API...")
     if not test_health():
         print("\n⚠️  Сервер недоступен. Запустите docker-compose up -d")
-        return
+        sys.exit(1)
     
     print(f"\n📁 Поиск изображений в {TEST_DIR}/...")
     
@@ -115,6 +116,9 @@ def run_tests():
     print(f"📊 ИТОГИ: {success_count}/{total_tests} тестов пройдено")
     print(f"📂 Результаты сохранены в: {OUTPUT_DIR.absolute()}")
     print("=" * 60)
+
+    if success_count < total_tests:
+        sys.exit(1)
 
 
 if __name__ == "__main__":
